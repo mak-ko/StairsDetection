@@ -278,6 +278,3 @@ C:\Users\LabUser\Desktop\卒研\松下恒星\StairsDetection\StairsDetection\obj
 C:\Users\LabUser\Desktop\卒研\松下恒星\StairsDetection\StairsDetection\obj\x64\Debug\StairsDetection.g.resources
 C:\Users\LabUser\Desktop\卒研\松下恒星\StairsDetection\StairsDetection\obj\x64\Debug\StairsDetection.Properties.Resources.resources
 C:\Users\LabUser\Desktop\卒研\松下恒星\StairsDetection\StairsDetection\obj\x64\Debug\StairsDetection.csproj.GenerateResource.Cache
-C:\Users\hi12k-matsushita\Desktop\Graduate\StairsDetection\StairsDetection\bin\x64\Debug\StairsDetection.exe.config
-C:\Users\hi12k-matsushita\Desktop\Graduate\StairsDetection\StairsDetection\obj\x64\Debug\StairsDetection.exe
-C:\Users\hi12k-matsushita\Desktop\Graduate\StairsDetection\StairsDetection\obj\x64\Debug\StairsDetection.pdb

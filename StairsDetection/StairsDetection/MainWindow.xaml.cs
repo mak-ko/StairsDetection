@@ -235,30 +235,29 @@ namespace StairsDetection
                         colorBuffer, colorFrameDesc.Width * (int)colorFrameDesc.BytesPerPixel, 0);
 
 
-               /* Graphics g = Graphics.FromImage(imageColor);
-                System.Drawing.Pen p = Pen(Color.Black, 1);
-                g.DrawRectangle(p, );*/
-                //colorImage.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10), 
-                    //new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10),CvColor.Orange, 1);
-
+                IplImage stairsSave = imageColor.ToIplImage();
+                stairsSave.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10), 
+                    new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10),CvColor.Orange, 1);//IplImageのcoloImageに四角を描く
+                WriteableBitmap SaveImage = stairsSave.ToWriteableBitmap();//IplImage to WriteblaBitmap
 
                 if (imageColor != null)
                     {
-                        if (stairFlag)
+                        if (stairFlag)  //階段があるなら撮る
                         {
                             string time = System.DateTime.Now.ToString("hh'-'mm'-'ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
                             using (FileStream stream = new FileStream("KinectScreenshot-Color-" + time + ".bmp", FileMode.Create, FileAccess.Write))
                             {
                                 BmpBitmapEncoder encorder = new BmpBitmapEncoder();
-                                encorder.Frames.Add(BitmapFrame.Create(imageColor));
-                                encorder.Save(stream);
-                                MessageBox.Show("Full");
+                            //encorder.Frames.Add(BitmapFrame.Create(imageColor));//writebleBitmapの四角なし保存
+                            encorder.Frames.Add(BitmapFrame.Create(SaveImage));//四角ありの画像保存
+                            encorder.Save(stream);
+                                MessageBox.Show("Founded Stairs.");
                                 stairFlag = false;
                             }
                         }
                         else
                         {
-                        MessageBox.Show("NotFound");
+                        MessageBox.Show("NotFound Stairs.");
                     }
                     }
                     else
@@ -379,7 +378,7 @@ namespace StairsDetection
                     diff = depthBuffer[upper] - depthBuffer[lower]; //深度差を計算するの
                 }
 
-                if (diff >= 200 && diff <= 350)
+                if (diff >= 100 && diff <= 500)
                 {
                     stepCandidateImage.Line(horizontalLines[0][i], horizontalLines[1][i], CvColor.Red, 1);  //深度差がいい感じなら赤
                 }
@@ -595,10 +594,10 @@ namespace StairsDetection
                 }
                 stairImage.Rectangle(new CvPoint2D32f(minX-10, minY-10), new CvPoint2D32f(maxX+10, maxY+10),
                                      CvColor.Orange, 1);
-                /*topLXPoint = minX;
+                topLXPoint = minX;
                 topLYPoint = minY;
                 bottomRXPoint = maxX;
-                bottomRYPoint = maxY;*/
+                bottomRYPoint = maxY;
             }
             
             for (int i = 0; i < stairCounter; i++)
@@ -768,7 +767,7 @@ namespace StairsDetection
         //----Kinectを用いて深度画像を取得する，その他画像の初期化-----------------------↓
             UpdateDepthFrame(e);
             depthImage = imageDepth.ToIplImage();
-            //colorImage = imageColor.ToIplImage();
+            colorImage = imageColor.ToIplImage();
             cannyImage.Zero();
             houghImage.Zero();
             flowVectorImage.Zero();
