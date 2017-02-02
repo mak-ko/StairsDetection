@@ -237,7 +237,7 @@ namespace StairsDetection
 
                 IplImage stairsSave = imageColor.ToIplImage();
                 stairsSave.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10), 
-                    new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10),CvColor.Orange, 1);//IplImageのcoloImageに四角を描く
+                    new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10),CvColor.Red, 1);//IplImageのcoloImageに四角を描く
                 WriteableBitmap SaveImage = stairsSave.ToWriteableBitmap();//IplImage to WriteblaBitmap
 
                 if (imageColor != null)
