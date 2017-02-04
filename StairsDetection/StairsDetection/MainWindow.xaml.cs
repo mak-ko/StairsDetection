@@ -20,6 +20,7 @@ namespace StairsDetection
     public partial class MainWindow : System.Windows.Window
     {
         KinectSensor kinect;
+        MultiSourceFrameReader multiReader; //座標変換用リーダー
         DepthFrameReader depthFrameReader;
         FrameDescription depthFrameDesc;
 
@@ -28,7 +29,7 @@ namespace StairsDetection
         FrameDescription colorFrameDesc;
         byte[] colorBuffer;
 
-        WriteableBitmap imageDepth; 
+        WriteableBitmap imageDepth;
         ushort[] depthBuffer;
         byte[] depthBitmapBuffer;
         Int32Rect depthRect;
@@ -37,7 +38,7 @@ namespace StairsDetection
         const int R = 20;
         int width = 512;
         int height = 424;
-        int cornerCount=600;    //見つかった特徴点の個数
+        int cornerCount = 600;    //見つかった特徴点の個数
 
         int lowThreshod = 10;//20        //Canny法のパラメータ
         int highThreshod = 20;//60      
@@ -71,14 +72,15 @@ namespace StairsDetection
         CvPoint2D32f[] featurePoint;    //1フレーム後，追跡後の特徴点
 
         CvSeq lines;        //hough変換によって得られる直線たち
-            
+
         CvPoint2D32f[][] horizontalLines = new CvPoint2D32f[2][];       //水平な直線を抽出する
         CvPoint2D32f[][] stairFeaturePoint = new CvPoint2D32f[2][];
-        
+
         CvPoint2D32f[][] stairs = new CvPoint2D32f[2][];
 
         bool needSave = false;      //color画像を0で保存
-        bool stairFlag = false;     //階段を検出したかどうか
+        bool stairFlag = false;     //階段を検出しているかどうか
+        bool csvSave = false;       //CSVに保存するか
 
         float topLXPoint, topLYPoint = 0;
         float bottomRXPoint, bottomRYPoint = 0;
@@ -100,7 +102,7 @@ namespace StairsDetection
                 depthFrameDesc = kinect.DepthFrameSource.FrameDescription;
                 depthFrameReader = kinect.DepthFrameSource.OpenReader();
                 depthFrameReader.FrameArrived += DepthFrameReader_FrameArrived;
-                imageDepth = new WriteableBitmap(depthFrameDesc.Width, depthFrameDesc.Height, 
+                imageDepth = new WriteableBitmap(depthFrameDesc.Width, depthFrameDesc.Height,
                                                 96.0, 96.0, PixelFormats.Gray8, null);
                 depthBuffer = new ushort[depthFrameDesc.Width * depthFrameDesc.Height];
                 depthBitmapBuffer = new byte[depthFrameDesc.Width * depthFrameDesc.Height];
@@ -108,16 +110,16 @@ namespace StairsDetection
                 depthStride = (int)(depthFrameDesc.Width);
                 kinect.Open();
                 image_depth.Source = imageDepth;
-                
+
                 depthPoint = new System.Windows.Point(depthFrameDesc.Width / 2, depthFrameDesc.Height / 2);
                 cannyImage = new IplImage(new CvSize(width, height), BitDepth.U8, 1);
                 houghImage = new IplImage(new CvSize(width, height), BitDepth.U8, 3);
                 flowVectorImage = new IplImage(new CvSize(width, height), BitDepth.U8, 3);
                 prevDepthImage = new IplImage(new CvSize(width, height), BitDepth.U8, 1);
                 prevPyrImage = new IplImage(new CvSize(width, height), BitDepth.U8, 1);
-                PyrImage = new IplImage(new CvSize(width, height), BitDepth.U8, 1);                
+                PyrImage = new IplImage(new CvSize(width, height), BitDepth.U8, 1);
                 prevCannyImage = new IplImage(new CvSize(width, height), BitDepth.U8, 1);
-                bodyIndexImage = new IplImage(new CvSize(width, height), BitDepth.U8, 3);  
+                bodyIndexImage = new IplImage(new CvSize(width, height), BitDepth.U8, 3);
                 combineLineImage = new IplImage(new CvSize(width, height), BitDepth.U8, 3);
                 stepCandidateImage = new IplImage(new CvSize(width, height), BitDepth.U8, 3);
                 stairImage = new IplImage(new CvSize(width, height), BitDepth.U8, 3);
@@ -145,7 +147,7 @@ namespace StairsDetection
                 bodyIndexFrameReader.FrameArrived += BodyIndexFrameReader_FrameArrived;
                 bodyIndexBuffer = new byte[bodyIndexFrameDesc.LengthInPixels];
                 imageBodyIndex = new WriteableBitmap(bodyIndexFrameDesc.Width, bodyIndexFrameDesc.Height, 96, 96, PixelFormats.Bgra32, null);
-                
+
                 bodyIndexColorBuffer = new byte[bodyIndexFrameDesc.LengthInPixels * 4];
                 bodyIndexColors = new System.Windows.Media.Color[]
                 {
@@ -164,17 +166,42 @@ namespace StairsDetection
                             "\tminLineLength=" + minLineLength +
                             "\tmaxLineGap=" + maxLineGap;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
                 Close();
             }
         }
 
+        private static void writeCsv() //CSV書き込み
+        {
+            var y = new double[] { 4, 5, 6 };
+            var x = new double[] { 1, 2, 3 };
+
+            try
+            {
+                //append  true: 既存のファイルに書き込み
+                //        false: 新しくファイルを作る
+                var append = true;
+                using (var sw = new System.IO.StreamWriter("test.csv", append))
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        sw.WriteLine("{0}, {1}, ", x[i], y[i]);
+                    }
+                }
+                //test = true;
+
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show(e.Message);
+            }
+        }
 
         private void BodyIndexFrameReader_FrameArrived(object sender, BodyIndexFrameArrivedEventArgs e)
         {
-            using(var bodyIndexFrame = e.FrameReference.AcquireFrame())
+            using (var bodyIndexFrame = e.FrameReference.AcquireFrame())
             {
                 if (bodyIndexFrame == null)
                 {
@@ -182,15 +209,15 @@ namespace StairsDetection
                 }
 
                 bodyIndexFrame.CopyFrameDataToArray(bodyIndexBuffer);
-                
+
             }
 
-            for(int i=0; i<bodyIndexBuffer.Length; i++)
+            for (int i = 0; i < bodyIndexBuffer.Length; i++)
             {
                 var index = bodyIndexBuffer[i];
                 var colorIndex = i * 4;
                 //Debug.WriteLine();
-                if(index != 255)
+                if (index != 255)
                 {
                     var color = bodyIndexColors[index];
                     bodyIndexColorBuffer[colorIndex + 0] = color.B;
@@ -212,12 +239,11 @@ namespace StairsDetection
 
 
             imageBodyIndex.WritePixels(new Int32Rect(0, 0, bodyIndexFrameDesc.Width, bodyIndexFrameDesc.Height), bodyIndexColorBuffer, bodyIndexFrameDesc.Width * 4, 0);
-            
+
         }
 
 
         //color frameが来た時に実行される//カラー画像データ
-
         private void ColorFrameReader_FrameArrived(object sender, ColorFrameArrivedEventArgs e)
         {
             if (!needSave) return;//needSave:保存時に立つフラグ
@@ -228,50 +254,101 @@ namespace StairsDetection
                 {
                     return;
                 }
-                    colorFrame.CopyConvertedFrameDataToArray(colorBuffer, ColorImageFormat.Bgra);
+                colorFrame.CopyConvertedFrameDataToArray(colorBuffer, ColorImageFormat.Bgra);
 
-                    imageColor.WritePixels(
-                        new Int32Rect(0, 0, colorFrameDesc.Width, colorFrameDesc.Height),
-                        colorBuffer, colorFrameDesc.Width * (int)colorFrameDesc.BytesPerPixel, 0);
+                imageColor.WritePixels(
+                    new Int32Rect(0, 0, colorFrameDesc.Width, colorFrameDesc.Height),
+                    colorBuffer, colorFrameDesc.Width * (int)colorFrameDesc.BytesPerPixel, 0);
 
 
                 IplImage stairsSave = imageColor.ToIplImage();
-                stairsSave.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10), 
-                    new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10),CvColor.Red, 1);//IplImageのcoloImageに四角を描く
+                stairsSave.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10),
+                    new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10), CvColor.Red, 1);//IplImageのcoloImageに四角を描く
                 WriteableBitmap SaveImage = stairsSave.ToWriteableBitmap();//IplImage to WriteblaBitmap
 
+                /*try   //------------------------------------座標変換用ソースまとめ(後ほど解体)↓
+                {
+                    var mapper = kinect.CoordinateMapper;
+                    colorFrameDesc = kinect.ColorFrameSource.CreateFrameDescription(ColorImageFormat.Bgra);
+                    colorBuffer = new byte[colorFrameDesc.LengthInPixels * colorFrameDesc.BytesPerPixel];
+
+                    depthFrameDesc = kinect.DepthFrameSource.FrameDescription;
+                    depthBuffer = new ushort[depthFrameDesc.Width * depthFrameDesc.Height];
+
+                    multiReader = kinect.OpenMultiSourceFrameReader(
+                        FrameSourceTypes.Color |
+                        FrameSourceTypes.Depth);
+
+                    multiReader.MultiSourceFrameArrived +=
+                        multiReader_MultiSorceFrameArrived;
+
+                }
+                catch(Exception ex)
+                {
+                    MessageBox.Show(ex.Message);
+                    Close();
+                }//--------------------------------------------------------------------------------↑*/
+
                 if (imageColor != null)
+                {
+                    if (stairFlag)  //階段があるなら撮る
                     {
-                        if (stairFlag)  //階段があるなら撮る
+                        if (IsSuccesion.IsChecked == true)
                         {
                             string time = System.DateTime.Now.ToString("hh'-'mm'-'ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
                             using (FileStream stream = new FileStream("KinectScreenshot-Color-" + time + ".bmp", FileMode.Create, FileAccess.Write))
                             {
                                 BmpBitmapEncoder encorder = new BmpBitmapEncoder();
-                            //encorder.Frames.Add(BitmapFrame.Create(imageColor));//writebleBitmapの四角なし保存
-                            encorder.Frames.Add(BitmapFrame.Create(SaveImage));//四角ありの画像保存
-                            encorder.Save(stream);
-                                MessageBox.Show("Founded Stairs.");
+                                //encorder.Frames.Add(BitmapFrame.Create(imageColor));//writebleBitmapの四角なし保存
+                                encorder.Frames.Add(BitmapFrame.Create(SaveImage));//四角ありの画像保存
+                                encorder.Save(stream);
+
+                                //MessageBox.Show("Founded Stairs.");
+                                if (csvSave)
+                                {
+                                    writeCsv();
+                                    MessageBox.Show("PIC,CSV saving done.");
+                                    csvSave = false;
+                                }
                                 stairFlag = false;
                             }
                         }
                         else
                         {
-                        MessageBox.Show("NotFound Stairs.");
+                            MessageBox.Show("NotFound Stairs.");
+                        }
                     }
-                    }
-                    else
-                    {
-                        MessageBox.Show("NULL");
-                    }
+                }
+                else
+                {
+                    MessageBox.Show("NULL");
+                }
 
-                    needSave = false;
+                needSave = false;
             }
         }
 
-        
+        /*void multiReader_MultiSorceFrameArrived( object sender, MultiSourceFrameArrivedEventArgs e)
+        {
+            var multiFrame = e.FrameReference.AcquireFrame();
+            if(multiFrame == null)
+            {
+                return;
+            }
+            UpdateDepthFrame(multiFrame);
+            UpdateColorFrame(multiFrame);
+
+            DrawColorCoodinate();
+            
+        }
+
+        void DrawColorCoodinate()
+        {
+
+        }*/
+
         //depth frameが来た時に実行される//深度画像データ
-        
+
         private void UpdateDepthFrame(DepthFrameArrivedEventArgs e)
         {
             using (var depthFrame = e.FrameReference.AcquireFrame())
@@ -285,14 +362,14 @@ namespace StairsDetection
             {
                 //depthBitmapBuffer[i] = (byte)(depthBuffer[i]);      //深度に波がある
                 depthBitmapBuffer[i] = (byte)(depthBuffer[i] / (8000 / 255)); //なめらか！！！なんで？，参考：Microsoftのサンプルプログラム
-                 
+
             }
             imageDepth.WritePixels(depthRect, depthBitmapBuffer, depthFrameDesc.Width, 0);
         }
 
 
         private void UpdateDepthValue()
-        { 
+        {
             CanvasPoint.Children.Clear();
             var ellipse = new Ellipse()
             {
@@ -302,16 +379,16 @@ namespace StairsDetection
                 Stroke = System.Windows.Media.Brushes.Red,
             };
 
-            Canvas.SetLeft(ellipse, depthPoint.X- R/2);
-            Canvas.SetTop(ellipse, depthPoint.Y-R/2);
+            Canvas.SetLeft(ellipse, depthPoint.X - R / 2);
+            Canvas.SetTop(ellipse, depthPoint.Y - R / 2);
             CanvasPoint.Children.Add(ellipse);
-          
+
             int depthIndex = (int)((depthPoint.Y * width) + depthPoint.X);
-            if (depthIndex >= width*height)
+            if (depthIndex >= width * height)
             {
                 depthIndex = 0;
             }
-            
+
             var text = new TextBlock()
             {
                 Text = string.Format("{0}mm", depthBuffer[depthIndex]),
@@ -320,7 +397,7 @@ namespace StairsDetection
             };
 
             Canvas.SetLeft(text, depthPoint.X);
-            Canvas.SetTop(text, depthPoint.Y - R/2);
+            Canvas.SetTop(text, depthPoint.Y - R / 2);
             CanvasPoint.Children.Add(text);
         }
 
@@ -332,12 +409,12 @@ namespace StairsDetection
             horizontalLines.Initialize();
             Cv.Smooth(depthImage, depthImage, SmoothType.Median, 3, 3);     //メディアンフィルタ，日光の紫外線によるノイズを低減させるため
             Cv.Canny(depthImage, cannyImage, lowThreshod, highThreshod, ApertureSize.Size3);          //Canny法でエッジ検出  
-            lines = Cv.HoughLines2(cannyImage, new CvMemStorage(),HoughLinesMethod.Probabilistic, 
-                                         1, Math.PI/180, houghThreshod, minLineLength, maxLineGap);
+            lines = Cv.HoughLines2(cannyImage, new CvMemStorage(), HoughLinesMethod.Probabilistic,
+                                         1, Math.PI / 180, houghThreshod, minLineLength, maxLineGap);
 
             lineCounter = 0;
-            for(int i=0; i<lines.Total; i++)    //全ての見つかった線について
-            {     
+            for (int i = 0; i < lines.Total; i++)    //全ての見つかった線について
+            {
                 CvLineSegmentPoint elem = lines.GetSeqElem<CvLineSegmentPoint>(i).Value;
                 CvPoint start = elem.P1;    //直線の始点
                 CvPoint end = elem.P2;      //直線の終点
@@ -345,8 +422,8 @@ namespace StairsDetection
 
                 //----とりあえず，水平な直線だけを取り出してみる-------------------------------------------------------------------------------
                 if (Math.Abs((double)start.Y - (double)end.Y) / Math.Abs((double)start.X - (double)end.X) < 0.15)    //斜めや縦に伸びる線は除外，勾配を計算している
-                //if(start.Y - end.Y <= 20)
-                                                                       //↑ゼロ除算の可能性あるけど，(double)でキャストすれば大丈夫だった，謎
+                                                                                                                     //if(start.Y - end.Y <= 20)
+                                                                                                                     //↑ゼロ除算の可能性あるけど，(double)でキャストすれば大丈夫だった，謎
                 {
                     horizontalLines[0][lineCounter] = start;
                     horizontalLines[1][lineCounter++] = end;
@@ -371,7 +448,7 @@ namespace StairsDetection
                 float diff = 0;
                 if (upper < 0 || lower >= width * height)   //IndexOutOfBoundsを起こすことがあるので，ごまかす（ダメ）
                 {
-                    diff = 0;   
+                    diff = 0;
                 }
                 else
                 {
@@ -395,25 +472,25 @@ namespace StairsDetection
             combinedLine[1] = new CvPoint2D32f[100];
             combinedLine[0][0] = horizontalLines[0][0];
             combinedLine[1][0] = horizontalLines[1][0];
-            
+
             //----同一線上にある線分に同じIDを付与
             int c = 0;
-            for(int i=0; i < lineCounter; i++)     
+            for (int i = 0; i < lineCounter; i++)
             {
                 if (ids[i] != -1 || ids[i] == -2) continue;
                 ids[i] = c++;
                 for (int j = 0; j < lineCounter; j++)
                 {
-                    if ( i==j || ids[j] != -1) continue;
-                    if(Math.Abs(horizontalLines[0][i].Y - horizontalLines[0][j].Y) <= 5)
+                    if (i == j || ids[j] != -1) continue;
+                    if (Math.Abs(horizontalLines[0][i].Y - horizontalLines[0][j].Y) <= 5)
                     {
                         ids[j] = ids[i];
-                    }    
+                    }
                 }
             }
 
             //確認用，同一線上ID
-            for(int i=0; i< lineCounter; i++)
+            for (int i = 0; i < lineCounter; i++)
             {
                 if (ids[i] != -2)
                 {
@@ -423,20 +500,20 @@ namespace StairsDetection
             }
 
             float[] depth = new float[c];
-            for(int i = 0; i < c; i++)
+            for (int i = 0; i < c; i++)
             {
                 float[] temp = new float[10];
             }
-       
+
             //----同じIDの線分どうしを結合する----------------------------------------------------------------------------------------↓
-            for (int i=0; i<c; i++)
+            for (int i = 0; i < c; i++)
             {
                 CvPoint2D32f[][] temp = new CvPoint2D32f[2][];
                 temp[0] = new CvPoint2D32f[50];
                 temp[1] = new CvPoint2D32f[50];
                 float[] d = new float[50];
                 int countUP = 0;
-                for (int j=0; j<lineCounter; j++)
+                for (int j = 0; j < lineCounter; j++)
                 {
                     if (ids[j] == i)
                     {
@@ -453,11 +530,11 @@ namespace StairsDetection
                         {
                             d[countUP++] = depthBuffer[index];
                         }
-                    }         
+                    }
                 }
 
                 float sum = 0;
-                for(int j=0; j < countUP; j++)
+                for (int j = 0; j < countUP; j++)
                 {
                     sum += d[j];
                 }
@@ -498,11 +575,11 @@ namespace StairsDetection
             int tmpStairCounter = 0;
 
             //----depthとcombinedLineをソートする
-            for(int i = 0; i < c; i++)
+            for (int i = 0; i < c; i++)
             {
-                for(int j = c; j > i; j--)
+                for (int j = c; j > i; j--)
                 {
-                    if(combinedLine[0][j].Y > combinedLine[0][i].Y)
+                    if (combinedLine[0][j].Y > combinedLine[0][i].Y)
                     {
                         CvPoint2D32f start = combinedLine[0][j];
                         CvPoint2D32f end = combinedLine[1][j];
@@ -525,7 +602,7 @@ namespace StairsDetection
                 //houghImage.PutText("" + depth[i], combinedLine[1][i], new CvFont(FontFace.HersheyScriptSimplex, 0.5f, 0.5f), CvColor.Red);
                 //combineLineImage.PutText("" + depth[i], combinedLine[1][i], new CvFont(FontFace.HersheyScriptSimplex, 0.5f, 0.5f), CvColor.Red);
             }
-            
+
             //----直線群から階段の候補を取り出す------------------------------
             for (int i = 0; i < c; i++)
             {
@@ -541,7 +618,7 @@ namespace StairsDetection
                 {
                     if (center.X >= combinedLine[0][j].X && center.X <= combinedLine[1][j].X && depth[i] <= depth[j])      //線分の間にあるとき
                     {
-                        
+
                         tmp[0][lineNum] = combinedLine[0][j];
                         tmp[1][lineNum++] = combinedLine[1][j];    //いったん保持
                     }
@@ -552,7 +629,7 @@ namespace StairsDetection
                     stairCanditates = tmp;
                 }
             }
-            
+
             //ただの変数名合わせ
             stairCounter = 0;
             for (int i = 0; i < tmpStairCounter; i++)
@@ -573,11 +650,11 @@ namespace StairsDetection
                 float maxY = 0;
                 float minX = width;
                 float minY = height;
-                for(int i=0; i<stairCounter; i++)
+                for (int i = 0; i < stairCounter; i++)
                 {
-                    if(minX >= stairs[0][i].X || minX >= stairs[1][i].X)
+                    if (minX >= stairs[0][i].X || minX >= stairs[1][i].X)
                     {
-                        minX = Math.Min(stairs[0][i].X, stairs[1][i].X);   
+                        minX = Math.Min(stairs[0][i].X, stairs[1][i].X);
                     }
                     if (minY >= stairs[0][i].Y || minY >= stairs[1][i].Y)
                     {
@@ -592,14 +669,14 @@ namespace StairsDetection
                         maxY = Math.Max(stairs[0][i].Y, stairs[1][i].Y);
                     }
                 }
-                stairImage.Rectangle(new CvPoint2D32f(minX-10, minY-10), new CvPoint2D32f(maxX+10, maxY+10),
+                stairImage.Rectangle(new CvPoint2D32f(minX - 10, minY - 10), new CvPoint2D32f(maxX + 10, maxY + 10),
                                      CvColor.Orange, 1);
                 topLXPoint = minX;
                 topLYPoint = minY;
                 bottomRXPoint = maxX;
                 bottomRYPoint = maxY;
             }
-            
+
             for (int i = 0; i < stairCounter; i++)
             {
                 stairImage.Line(stairs[0][i], stairs[1][i], CvColor.Red, 1);    //階段を描画
@@ -626,25 +703,25 @@ namespace StairsDetection
             IplImage eigImage = new IplImage(depthImage.GetSize(), BitDepth.U8, 1);     //this parameter is ignored.
 
             cornerCount = 300;              //下記のGoodFeaturesToTrack()を通るたびに見つかった特徴点の個数に書き換わるので注意，だから毎回初期化する
-            Cv.GoodFeaturesToTrack(prevCannyImage, eigImage, tempImage, 
+            Cv.GoodFeaturesToTrack(prevCannyImage, eigImage, tempImage,
                                    out prevFeaturePoint, ref cornerCount,
-                                   0.1, 10);  
+                                   0.1, 10);
             //Cv.FindCornerSubPix(prevDepthImage,  prevFeaturePoint, cornerCount, new CvSize(5,5), new CvSize(-1,-1), new CvTermCriteria(10, 0.1));     //？
 
-        //----直線付近の特徴点を抽出する-----------------------↓         //見つからなかった時の処理はどうなるの？
+            //----直線付近の特徴点を抽出する-----------------------↓         //見つからなかった時の処理はどうなるの？
             //始点について     
             for (int j = 0; j < stairCounter; j++)
             {
                 bool find = false;
                 CvPoint2D32f tmp = prevFeaturePoint[0];
                 int nearestPointindex = 0;
-                for(int i=0; i<cornerCount; i++)
+                for (int i = 0; i < cornerCount; i++)
                 {
-                    if(Math.Abs(prevFeaturePoint[i].X- stairs[0][j].X) <= 10 && Math.Abs(prevFeaturePoint[i].Y - stairs[0][j].Y) <=10)         //始点
-                    {   
+                    if (Math.Abs(prevFeaturePoint[i].X - stairs[0][j].X) <= 10 && Math.Abs(prevFeaturePoint[i].Y - stairs[0][j].Y) <= 10)         //始点
+                    {
                         //階段の始点に一番近い特徴点を，階段の始点の特徴点とする
-                        if (Math.Pow(tmp.X - stairs[0][j].X, 2) + Math.Pow(tmp.Y - stairs[0][j].Y,2) >= 
-                            Math.Pow(prevFeaturePoint[i].X - stairs[0][j].X,2) + Math.Pow(prevFeaturePoint[i].Y - stairs[0][j].Y,2))
+                        if (Math.Pow(tmp.X - stairs[0][j].X, 2) + Math.Pow(tmp.Y - stairs[0][j].Y, 2) >=
+                            Math.Pow(prevFeaturePoint[i].X - stairs[0][j].X, 2) + Math.Pow(prevFeaturePoint[i].Y - stairs[0][j].Y, 2))
                         {
                             tmp = prevFeaturePoint[i];
                             nearestPointindex = i;
@@ -656,9 +733,9 @@ namespace StairsDetection
                 {
                     stairFeaturePoint[0][j] = prevFeaturePoint[nearestPointindex];
                 }
-                else if(find == false)  //見つからなかったときは，前回見つけたやつの中から一番近いやつにすればいいと思う
+                else if (find == false)  //見つからなかったときは，前回見つけたやつの中から一番近いやつにすればいいと思う
                 {
-                    
+
                 }
             }
 
@@ -673,7 +750,7 @@ namespace StairsDetection
                 {
                     if (Math.Abs(prevFeaturePoint[i].X - stairs[1][j].X) <= 10 && Math.Abs(prevFeaturePoint[i].Y - stairs[1][j].Y) <= 10)         //始点
                     {
-                        if (Math.Pow(tmp.X - stairs[1][j].X, 2) + Math.Pow(tmp.Y - stairs[1][j].Y, 2) >= 
+                        if (Math.Pow(tmp.X - stairs[1][j].X, 2) + Math.Pow(tmp.Y - stairs[1][j].Y, 2) >=
                             Math.Pow(prevFeaturePoint[i].X - stairs[1][j].X, 2) + Math.Pow(prevFeaturePoint[i].Y - stairs[1][j].Y, 2))
                         {
                             tmp = prevFeaturePoint[i];
@@ -687,10 +764,10 @@ namespace StairsDetection
                     stairFeaturePoint[1][j] = prevFeaturePoint[nearestPointindex];
                 }
             }
-        //-----------------------------------------------------↑
+            //-----------------------------------------------------↑
 
             //確認用，すべての特徴点を描画，白い点
-            for (int i=0; i< cornerCount; i++)   
+            for (int i = 0; i < cornerCount; i++)
             {
                 houghImage.Circle(prevFeaturePoint[i], 1, CvColor.White, 1);
             }
@@ -702,7 +779,7 @@ namespace StairsDetection
                 combineLineImage.Circle(stairFeaturePoint[1][i], 3, CvColor.Yellow, 2);
             }
         }
-        
+
 
         /*  オプティカルフローで特徴点を追跡する
             featurePointに追跡後の特徴点を格納する
@@ -711,7 +788,7 @@ namespace StairsDetection
         {
             sbyte[] features_status = new sbyte[cornerCount];
             float[] all_features_errors = new float[cornerCount];
-            
+
             CvPoint2D32f[] fpStart;
             CvPoint2D32f[] fpEnd;
 
@@ -764,7 +841,7 @@ namespace StairsDetection
         */
         private void DepthFrameReader_FrameArrived(object sender, DepthFrameArrivedEventArgs e)
         {
-        //----Kinectを用いて深度画像を取得する，その他画像の初期化-----------------------↓
+            //----Kinectを用いて深度画像を取得する，その他画像の初期化-----------------------↓
             UpdateDepthFrame(e);
             depthImage = imageDepth.ToIplImage();
             colorImage = imageColor.ToIplImage();
@@ -775,7 +852,7 @@ namespace StairsDetection
             stepCandidateImage.Zero();
             stairImage.Zero();
 
-        //----実装したアルゴリズム諸々を実行----------------------------------------------↓ 
+            //----実装したアルゴリズム諸々を実行----------------------------------------------↓ 
             CalcEdge();                     //階段検出
             //FindFeturePoint();             //特徴点抽出
             //CalcOpticalFlow();              //オプティカルフローの計算
@@ -785,8 +862,8 @@ namespace StairsDetection
             depthImage.Copy(prevDepthImage);
             cannyImage.Copy(prevCannyImage);
 
-        //----表示する画像のソースを指定する-----------------------------
-            image_canny.Source = cannyImage.ToWriteableBitmap();        
+            //----表示する画像のソースを指定する-----------------------------
+            image_canny.Source = cannyImage.ToWriteableBitmap();
             image_hough.Source = houghImage.ToWriteableBitmap();
             //image_flowVector.Source = flowVectorImage.ToWriteableBitmap();
             //image_bodyIndex.Source = imageBodyIndex;
@@ -804,7 +881,7 @@ namespace StairsDetection
                 depthFrameReader.Dispose();
                 depthFrameReader = null;
             }
-            if(colorFrameReader != null)
+            if (colorFrameReader != null)
             {
                 colorFrameReader.Dispose();
                 colorFrameReader = null;
@@ -837,9 +914,10 @@ namespace StairsDetection
             {
                 needSave = true;
             }
-            if(e.Key == Key.Enter)
+            if (e.Key == Key.Enter)
             {
-
+                needSave = true;
+                csvSave = true;
             }
 
 
@@ -852,38 +930,38 @@ namespace StairsDetection
             Debug.WriteLine("lowThreshod=" + lowThreshod +
                             "\thighThreshod=" + highThreshod +
                             "\thoughThreshod=" + houghThreshod +
-                            "\tminLineLength="+ minLineLength +
-                            "\tmaxLineGap="+ maxLineGap);
+                            "\tminLineLength=" + minLineLength +
+                            "\tmaxLineGap=" + maxLineGap);
         }
 
 
         private void Window_MouseMove(object sender, MouseEventArgs e)
         {
             depthPoint = e.GetPosition(this);
-            depthPoint = new System.Windows.Point(depthPoint.X-212-8, depthPoint.Y);
+            depthPoint = new System.Windows.Point(depthPoint.X - 212 - 8, depthPoint.Y);
         }
 
-            /*if(imageColor != null)
+        /*if(imageColor != null)
+    {
+        BitmapEncoder encorder = new PngBitmapEncoder();
+        encorder.Frames.Add(BitmapFrame.Create(this.imageColor));
+        string time = System.DateTime.Now.ToString("hh'-'mm'-'ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
+        string myPhotos = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        string path = System.IO.Path.Combine(myPhotos, "KinectScreenshot-Color-" + time + ".png");
+        try
         {
-            BitmapEncoder encorder = new PngBitmapEncoder();
-            encorder.Frames.Add(BitmapFrame.Create(this.imageColor));
-            string time = System.DateTime.Now.ToString("hh'-'mm'-'ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
-            string myPhotos = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-            string path = System.IO.Path.Combine(myPhotos, "KinectScreenshot-Color-" + time + ".png");
-            try
+            using (FileStream fs = new FileStream(path, FileMode.Create))
             {
-                using (FileStream fs = new FileStream(path, FileMode.Create))
-                {
-                    encorder.Save(fs);
-                }
-
-                //this.StatusText = string.Format(Properties.Resources.SavedScreenshotStatusTextFormat, path);
-            }
-            catch (IOException)
-            {
-                //this.StatusText = string.Format(Properties.Resources.FailedScreenshotStatusTextFormat, path);
+                encorder.Save(fs);
             }
 
-        }*/
+            //this.StatusText = string.Format(Properties.Resources.SavedScreenshotStatusTextFormat, path);
+        }
+        catch (IOException)
+        {
+            //this.StatusText = string.Format(Properties.Resources.FailedScreenshotStatusTextFormat, path);
+        }
+
+    }*/
     }
 }

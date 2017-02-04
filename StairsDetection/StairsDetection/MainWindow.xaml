@@ -135,5 +135,14 @@
                 Height="424"
                 HorizontalAlignment="Left"
                 />
+        <GroupBox Header=" 保存方式選択" Width="130" Height="100"
+                  HorizontalAlignment="Left" VerticalAlignment="Top"
+                  Background="White">
+            <StackPanel Orientation="Vertical" Margin="10">
+                <RadioButton Content="個別撮影"
+                             x:Name="IsSuccesion" IsChecked="True"/>
+                <RadioButton Content="連続撮影" />
+            </StackPanel>
+        </GroupBox>
     </Grid>
 </Window>
