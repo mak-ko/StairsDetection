@@ -229,21 +229,18 @@ namespace StairsDetection
                     new Int32Rect(0, 0, colorFrameDesc.Width, colorFrameDesc.Height),
                     colorBuffer, colorFrameDesc.Width * (int)colorFrameDesc.BytesPerPixel, 0);
 
-
-                IplImage stairsSave = imageColor.ToIplImage();
-                /* stairsSave.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10),
-                    new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10), CvColor.Red, 1);//IplImageのcoloImageに四角を描く 返還前*/
-                stairsSave.Rectangle(new CvPoint2D32f(topL.X - 10, topL.Y - 10),
-                    new CvPoint2D32f(bottomR.X + 10, bottomR.Y + 10), CvColor.Red, 1);//IplImageのcoloImageに四角を描く　返還後
-                WriteableBitmap SaveImage = stairsSave.ToWriteableBitmap();//IplImage to WriteblaBitmap
-
-
                 if (imageColor != null)
                 {
                     if (IsSuccesion.IsChecked == true)//個別撮影フラグ
                     {
                         if (stairFlag)  //階段があるなら撮る
                         {
+                            IplImage stairsSave = imageColor.ToIplImage();
+                            /* stairsSave.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10),
+                                new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10), CvColor.Red, 1);//IplImageのcoloImageに四角を描く 返還前*/
+                            stairsSave.Rectangle(new CvPoint2D32f(topL.X - 10, topL.Y - 10),
+                                new CvPoint2D32f(bottomR.X + 10, bottomR.Y + 10), CvColor.Red, 1);//IplImageのcoloImageに四角を描く　返還後
+                            WriteableBitmap SaveImage = stairsSave.ToWriteableBitmap();//IplImage to WriteblaBitmap
                             string time = System.DateTime.Now.ToString("hh'-'mm'-'ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
                             using (FileStream stream = new FileStream("KinectScreenshot-Color-" + time + ".bmp", FileMode.Create, FileAccess.Write))
                             {
@@ -380,7 +377,7 @@ namespace StairsDetection
         {
             // カラー画像の解像度でデータを作る
             //var colorImageBuffer = new byte[colorFrameDesc.LengthInPixels *
-                                            //colorFrameDesc.BytesPerPixel];
+            //colorFrameDesc.BytesPerPixel];
 
             // カラー座標系に対応するDepth座標系の一覧を取得する
             //var depthSpace = new DepthSpacePoint[colorFrameDesc.LengthInPixels];
@@ -388,14 +385,14 @@ namespace StairsDetection
 
             //int topLX = (int)depthSpace[(topLYPoint * depthFrameDesc.Width + topLXPoint)].X;
             //int topLY = (int)depthSpace[(topLYPoint * depthFrameDesc.Width + topLXPoint)].Y;
-          
-          //  ColorSpacePoint topL = new ColorSpacePoint();
+
+            //  ColorSpacePoint topL = new ColorSpacePoint();
             DepthSpacePoint dp = new DepthSpacePoint();
             dp.X = (float)topLXPoint;
             dp.Y = (float)topLYPoint;
             topL = kinect.CoordinateMapper.MapDepthPointToColorSpace(dp, depthBuffer[topLYPoint * depthFrameDesc.Width + topLXPoint]);
 
-          //  ColorSpacePoint bottomR = new ColorSpacePoint();
+            //  ColorSpacePoint bottomR = new ColorSpacePoint();
             DepthSpacePoint dp1 = new DepthSpacePoint();
             dp1.X = (float)topLXPoint;
             dp1.Y = (float)topLYPoint;
