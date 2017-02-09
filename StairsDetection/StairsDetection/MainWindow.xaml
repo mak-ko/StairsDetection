@@ -137,7 +137,7 @@
                 />
         <GroupBox Header=" 保存方式選択" Width="130" Height="100"
                   HorizontalAlignment="Left" VerticalAlignment="Top"
-                  Background="White">
+                  Background="White" Grid.Column="1" Margin="192,100,0,0" Grid.Row="1">
             <StackPanel Orientation="Vertical" Margin="10">
                 <RadioButton Content="個別撮影"
                              x:Name="IsSuccesion" IsChecked="True"/>

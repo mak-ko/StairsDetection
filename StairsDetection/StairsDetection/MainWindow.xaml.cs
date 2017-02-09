@@ -14,6 +14,7 @@ using System.Globalization;
 using System.ComponentModel;
 using System.IO;
 using System.Threading.Tasks;
+using System.Windows.Threading;
 
 namespace StairsDetection
 {
@@ -30,7 +31,7 @@ namespace StairsDetection
         FrameDescription colorFrameDesc;
         byte[] colorBuffer;
 
-        WriteableBitmap imageDepth;
+        WriteableBitmap imageDepth = null;
         ushort[] depthBuffer;
         byte[] depthBitmapBuffer;
         Int32Rect depthRect;
@@ -79,9 +80,12 @@ namespace StairsDetection
 
         CvPoint2D32f[][] stairs = new CvPoint2D32f[2][];
 
-        bool needSave = false;      //color画像を0で保存
+        bool needSaveC = false;      //color画像を0で保存
+        bool needSaveD = false;      //color画像を0で保存
         bool stairFlag = false;     //階段を検出しているかどうか
-        bool csvSave = false;       //CSVに保存するか
+        bool csvSave = true;       //CSVに保存するか
+
+        DispatcherTimer dispatcherTimer;
 
         int topLXPoint, topLYPoint, bottomRXPoint, bottomRYPoint = 0;   //depthRectanglePoint
         ColorSpacePoint topL = new ColorSpacePoint();
@@ -175,7 +179,7 @@ namespace StairsDetection
             }
         }
 
-        private void writeCsv() //CSV書き込み
+        private void writeCsv(string time) //CSV書き込み
         {
             var topL = new int[] { topLXPoint, topLYPoint };
             var bottomR = new int[] { bottomRXPoint, bottomRYPoint };
@@ -188,7 +192,9 @@ namespace StairsDetection
                 using (var sw = new System.IO.StreamWriter("test.csv", append))
                 {
 
-                    sw.WriteLine("{0}, {1}, {2}, {3}, ", topL[0], topL[1], bottomR[0], bottomR[1]);
+                    //sw.WriteLine("{0}, {1}, {2}, {3},  ", topL[0], topL[1], bottomR[0], bottomR[1]);
+                    sw.Write("{0}, {1}, {2}, {3}, ", topL[0], topL[1], bottomR[0], bottomR[1]);
+                    sw.WriteLine(time);
 
                 }
                 //test = true;
@@ -202,7 +208,7 @@ namespace StairsDetection
 
         private void SavePic(ColorFrameArrivedEventArgs e)
         {
-            if (!needSave) return;//needSave:保存時に立つフラグ
+            if (!needSaveC) return;//needSave:保存時に立つフラグ
 
             using (var colorFrame = e.FrameReference.AcquireFrame())
             {
@@ -231,49 +237,107 @@ namespace StairsDetection
 
                 if (imageColor != null)
                 {
-                    if (IsSuccesion.IsChecked == true)//個別撮影フラグ
+                    if (stairFlag)  //階段があるなら撮る
                     {
-                        if (stairFlag)  //階段があるなら撮る
-                        {
-                            IplImage stairsSave = imageColor.ToIplImage();
-                            /* stairsSave.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10),
-                                new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10), CvColor.Red, 1);//IplImageのcoloImageに四角を描く 返還前*/
-                            stairsSave.Rectangle(new CvPoint2D32f(topL.X - 10, topL.Y - 10),
-                                new CvPoint2D32f(bottomR.X + 10, bottomR.Y + 10), CvColor.Red, 1);//IplImageのcoloImageに四角を描く　返還後
-                            WriteableBitmap SaveImage = stairsSave.ToWriteableBitmap();//IplImage to WriteblaBitmap
-                            string time = System.DateTime.Now.ToString("hh'-'mm'-'ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
-                            using (FileStream stream = new FileStream("KinectScreenshot-Color-" + time + ".bmp", FileMode.Create, FileAccess.Write))
-                            {
-                                BmpBitmapEncoder encorder = new BmpBitmapEncoder();
-                                //encorder.Frames.Add(BitmapFrame.Create(imageColor));//writebleBitmapの四角なし保存
-                                encorder.Frames.Add(BitmapFrame.Create(SaveImage));//四角ありの画像保存
-                                encorder.Save(stream);
 
-                                //MessageBox.Show("Founded Stairs.");
-                                if (csvSave)
-                                {
-                                    writeCsv();
-                                    MessageBox.Show("PIC,CSV saving done.");
-                                    csvSave = false;
-                                }
-                                stairFlag = false;
-                            }
-                        }
-                        else
+                        IplImage stairsSave = imageColor.ToIplImage();
+                        stairsSave.Rectangle(new CvPoint2D32f(topL.X - 10, topL.Y - 10),
+                            new CvPoint2D32f(bottomR.X + 10, bottomR.Y + 10), CvColor.Red, 1);//IplImageのcoloImageに四角を描く　返還後
+                        WriteableBitmap SaveImage = stairsSave.ToWriteableBitmap();//IplImage to WriteblaBitmap
+                        double scale = 1d / 2d;
+                        var transformedBitmap = new TransformedBitmap(SaveImage, new ScaleTransform(scale, scale));
+                        string time = System.DateTime.Now.ToString("MM-dd-hh'-'mm'-'ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
+                        using (FileStream stream = new FileStream("Color-" + time + ".bmp", FileMode.Create, FileAccess.Write))
                         {
-                            MessageBox.Show("NotFound Stairs.");
+                            BmpBitmapEncoder encorder = new BmpBitmapEncoder();
+                            //encorder.Frames.Add(BitmapFrame.Create(imageColor));//writebleBitmapの四角なし保存
+                            encorder.Frames.Add(BitmapFrame.Create(SaveImage));//四角ありの画像保存
+                            encorder.Save(stream);
+
+                            //MessageBox.Show("Founded Stairs.");
+                            if (csvSave)
+                            {
+                                writeCsv(time);
+                                if (IsSuccesion.IsChecked == true)
+                                {
+                                    MessageBox.Show("PIC,CSV saving done.");
+                                    //System.Threading.Thread.Sleep(3000);
+                                }
+                                csvSave = false;
+                            }
+                            stairFlag = false;
                         }
 
                     }
+                    else
+                    {
+                        MessageBox.Show("NotFound Stairs.");
+                    }
+                    //needSaveC = false;
                 }
                 else
                 {
                     MessageBox.Show("NULL");
                 }
 
-                needSave = false;
+                needSaveC = false;
             }
         }
+
+        private void SavePic(DepthFrameArrivedEventArgs e)
+        {
+            if (!needSaveD) return;//needSave:保存時に立つフラグ
+
+            using (var depthFrame = e.FrameReference.AcquireFrame())
+            {
+                if (depthFrame == null)
+                {
+                    return;
+                }
+
+                depthFrame.CopyFrameDataToArray(depthBuffer);
+
+                /*imageDepth.WritePixels(
+                    new Int32Rect(0, 0, depthFrameDesc.Width, depthFrameDesc.Height),
+                    depthBuffer, depthFrameDesc.Width * (int)depthFrameDesc.BytesPerPixel, 0);*/
+                    
+                if (imageDepth != null)
+                {
+
+                    if (stairFlag)  //階段があるなら撮る
+                    {
+
+                        IplImage stairsSave = imageDepth.ToIplImage();
+                        stairsSave.Rectangle(new CvPoint2D32f(topLXPoint - 10, topLYPoint - 10),
+                            new CvPoint2D32f(bottomRXPoint + 10, bottomRYPoint + 10), CvColor.White, 1);//IplImageのcoloImageに四角を描く　返還後
+                        WriteableBitmap SaveImage = stairsSave.ToWriteableBitmap();//IplImage to WriteblaBitmap
+                        string time = System.DateTime.Now.ToString("MM-dd-hh-mm-ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
+                        using (FileStream stream = new FileStream("Depth-" + time + ".bmp", FileMode.Create, FileAccess.Write))
+                        {
+                            BmpBitmapEncoder encorder = new BmpBitmapEncoder();
+                            encorder.Frames.Add(BitmapFrame.Create(SaveImage));//writebleBitmapの四角なし保存
+                            //encorder.Frames.Add(BitmapFrame.Create(transformedBitmap));//四角ありの画像保存
+                            encorder.Save(stream);
+                            MessageBox.Show("Depth Saved.");
+                        }
+
+                    }
+                    else
+                    {
+                        MessageBox.Show("NotFound Stairs.");
+                    }
+                    needSaveD = false;
+
+                }
+                else
+                {
+                    MessageBox.Show("NULL");
+                }
+
+                needSaveD = false;
+            }
+        }
+        
 
         private void BodyIndexFrameReader_FrameArrived(object sender, BodyIndexFrameArrivedEventArgs e)
         {
@@ -322,82 +386,32 @@ namespace StairsDetection
         //color frameが来た時に実行される//カラー画像データ
         private void ColorFrameReader_FrameArrived(object sender, ColorFrameArrivedEventArgs e)
         {
-            if (!needSave) return;//needSave:保存時に立つフラグ
-            SavePic(e);
-            needSave = false;
-
-        }
-
-        private void multiReader_MultiSorceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
-        {
-            var multiFrame = e.FrameReference.AcquireFrame();
-            if (multiFrame == null)
+            if (!needSaveC) return;//needSave:保存時に立つフラグ
+            if (IsSuccesion.IsChecked == true)//個別撮影フラグ
             {
-                return;
+                SavePic(e);
             }
-
-            UpdateColorFrame(multiFrame);
-            UpdateDepthFrame(multiFrame);
-
-            DrawColorCoodinate();
-
-
-        }
-
-        private void UpdateColorFrame(MultiSourceFrame multiFrame)
-        {
-            using (var colorFrame = multiFrame.ColorFrameReference.AcquireFrame())
+            else
             {
-                if (colorFrame == null)
-                {
-                    return;
-                }
+                SavePic(e);
 
-                // BGRAデータを取得する
-                colorFrame.CopyConvertedFrameDataToArray(
-                                            colorBuffer, ColorImageFormat.Bgra);
+                dispatcherTimer = new DispatcherTimer(DispatcherPriority.Normal);
+                //左から　日数、時間、分、秒、ミリ秒で設定　今回は3秒ごと
+                dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 3, 0);
+                dispatcherTimer.Tick += new EventHandler(dispatcherTimer_Tick);
+                dispatcherTimer.Start();
             }
+            //needSave = false;
+
         }
 
-        private void UpdateDepthFrame(MultiSourceFrame multiFrame)
+        private void dispatcherTimer_Tick(object sender, EventArgs e)
         {
-            using (var depthFrame = multiFrame.DepthFrameReference.AcquireFrame())
-            {
-                if (depthFrame == null)
-                {
-                    return;
-                }
 
-                // Depthデータを取得する
-                depthFrame.CopyFrameDataToArray(depthBuffer);
-            }
+            needSaveC = true;
+
         }
 
-        private void DrawColorCoodinate()
-        {
-            // カラー画像の解像度でデータを作る
-            //var colorImageBuffer = new byte[colorFrameDesc.LengthInPixels *
-            //colorFrameDesc.BytesPerPixel];
-
-            // カラー座標系に対応するDepth座標系の一覧を取得する
-            //var depthSpace = new DepthSpacePoint[colorFrameDesc.LengthInPixels];
-            //mapper.MapColorFrameToDepthSpace(depthBuffer, depthSpace);
-
-            //int topLX = (int)depthSpace[(topLYPoint * depthFrameDesc.Width + topLXPoint)].X;
-            //int topLY = (int)depthSpace[(topLYPoint * depthFrameDesc.Width + topLXPoint)].Y;
-
-            //  ColorSpacePoint topL = new ColorSpacePoint();
-            DepthSpacePoint dp = new DepthSpacePoint();
-            dp.X = (float)topLXPoint;
-            dp.Y = (float)topLYPoint;
-            topL = kinect.CoordinateMapper.MapDepthPointToColorSpace(dp, depthBuffer[topLYPoint * depthFrameDesc.Width + topLXPoint]);
-
-            //  ColorSpacePoint bottomR = new ColorSpacePoint();
-            DepthSpacePoint dp1 = new DepthSpacePoint();
-            dp1.X = (float)topLXPoint;
-            dp1.Y = (float)topLYPoint;
-            bottomR = kinect.CoordinateMapper.MapDepthPointToColorSpace(dp1, depthBuffer[bottomRYPoint * depthFrameDesc.Width + bottomRXPoint]);
-        }
 
         //depth frameが来た時に実行される//深度画像データ
 
@@ -417,6 +431,7 @@ namespace StairsDetection
 
             }
             imageDepth.WritePixels(depthRect, depthBitmapBuffer, depthFrameDesc.Width, 0);
+
         }
 
 
@@ -922,7 +937,9 @@ namespace StairsDetection
             image_combinedLine.Source = combineLineImage.ToWriteableBitmap();
             image_stepCandidate.Source = stepCandidateImage.ToWriteableBitmap();
             image_stairs.Source = stairImage.ToWriteableBitmap();
-            //Debug.WriteLine("kamome");            
+            //Debug.WriteLine("kamome");           
+            if (needSaveD) SavePic(e);//needSave:保存時に立つフラグ
+
         }
 
 
@@ -956,21 +973,22 @@ namespace StairsDetection
             if (e.Key == Key.W) highThreshod++;
             if (e.Key == Key.S) highThreshod--;
             if (e.Key == Key.E) houghThreshod++;
-            if (e.Key == Key.D) houghThreshod--;
+            if (e.Key == Key.D)
+            {
+                needSaveD = true;
+                houghThreshod--;
+            }
+            if (e.Key == Key.C)
+            {
+                needSaveC = true;
+                csvSave = true;
+            }
             if (e.Key == Key.R) minLineLength++;
             if (e.Key == Key.F) minLineLength--;
             if (e.Key == Key.T) maxLineGap++;
             if (e.Key == Key.G) maxLineGap--;
             if (e.Key == Key.Escape) Close();
-            if (e.Key == Key.D0)
-            {
-                needSave = true;
-            }
-            if (e.Key == Key.Enter)
-            {
-                needSave = true;
-                csvSave = true;
-            }
+            //if (e.Key == Key.Enter) 
 
 
             ths.Text = "lowThreshod=" + lowThreshod +
@@ -993,27 +1011,5 @@ namespace StairsDetection
             depthPoint = new System.Windows.Point(depthPoint.X - 212 - 8, depthPoint.Y);
         }
 
-        /*if(imageColor != null)
-    {
-        BitmapEncoder encorder = new PngBitmapEncoder();
-        encorder.Frames.Add(BitmapFrame.Create(this.imageColor));
-        string time = System.DateTime.Now.ToString("hh'-'mm'-'ss", CultureInfo.CurrentUICulture.DateTimeFormat);//日時取得
-        string myPhotos = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-        string path = System.IO.Path.Combine(myPhotos, "KinectScreenshot-Color-" + time + ".png");
-        try
-        {
-            using (FileStream fs = new FileStream(path, FileMode.Create))
-            {
-                encorder.Save(fs);
-            }
-
-            //this.StatusText = string.Format(Properties.Resources.SavedScreenshotStatusTextFormat, path);
-        }
-        catch (IOException)
-        {
-            //this.StatusText = string.Format(Properties.Resources.FailedScreenshotStatusTextFormat, path);
-        }
-
-    }*/
     }
 }
